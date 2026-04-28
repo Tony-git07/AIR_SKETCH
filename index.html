@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#030308">
+  <title>AirSketch ✦</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <!-- Hidden webcam input -->
+  <video id="cam" playsinline autoplay muted></video>
+
+  <!-- ══ 4-layer canvas stack ══════════════════════ -->
+  <div id="stage">
+    <canvas id="c-video"></canvas> <!-- Layer 1: video feed -->
+    <canvas id="c-draw"></canvas> <!-- Layer 2: strokes -->
+    <canvas id="c-text"></canvas> <!-- Layer 3: text -->
+    <canvas id="c-overlay"></canvas> <!-- Layer 4: hand skeleton -->
+  </div>
+
+  <!-- ══ HUD ════════════════════════════════════════ -->
+  <div id="hud">
+
+    <!-- Top pill bar -->
+    <div id="topbar">
+      <div id="logo">
+        <div class="logo-hex">✦</div>
+        <span>AIR<b>SKETCH</b></span>
+      </div>
+
+      <div id="center-status">
+        <div id="hand-chip" class="chip">
+          <span id="h-dot" class="h-dot"></span>
+          <span id="h-label">Searching…</span>
+        </div>
+        <div id="gesture-chip" class="chip">
+          <span id="g-icon">—</span>
+          <span id="g-name">Idle</span>
+        </div>
+        <div id="mode-tag">DRAW</div>
+      </div>
+
+      <div id="topbar-right">
+        <button class="tb-btn" id="btn-undo" title="Undo (Ctrl+Z)">↩</button>
+        <button class="tb-btn" id="btn-redo" title="Redo (Ctrl+Y)">↪</button>
+        <button class="tb-btn" id="btn-save" title="Save (Ctrl+S)">⬇</button>
+        <button class="tb-btn red" id="btn-clear" title="Clear Canvas">⌫</button>
+      </div>
+    </div>
+
+    <!-- Left tool strip -->
+    <div id="left-strip">
+      <button class="tool active" data-tool="draw"><span>✏</span><em>DRAW</em></button>
+      <button class="tool" data-tool="erase"><span>◎</span><em>ERASE</em></button>
+      <button class="tool" data-tool="select"><span>✥</span><em>MOVE</em></button>
+      <button class="tool" data-tool="text" id="tool-text"><span>T</span><em>TEXT</em></button>
+
+      <div class="strip-sep"></div>
+
+      <div class="knob-group">
+        <label>SZ</label>
+        <input type="range" class="vr" id="r-size" min="2" max="60" value="8">
+        <span id="lbl-size">8</span>
+      </div>
+      <div class="knob-group">
+        <label>GL</label>
+        <input type="range" class="vr" id="r-glow" min="0" max="40" value="28">
+        <span id="lbl-glow">28</span>
+      </div>
+      <div class="knob-group">
+        <label>OP</label>
+        <input type="range" class="vr" id="r-opacity" min="5" max="100" value="100">
+        <span id="lbl-opacity">100</span>
+      </div>
+    </div>
+
+    <!-- Right color dock -->
+    <div id="right-dock">
+      <div class="dock-section">
+        <div class="dock-label">COLOR</div>
+        <div id="swatches">
+          <button class="sw active" data-c="#00d4ff" style="--c:#00d4ff"></button>
+          <button class="sw" data-c="#ff0080" style="--c:#ff0080"></button>
+          <button class="sw" data-c="#aaff00" style="--c:#aaff00"></button>
+          <button class="sw" data-c="#ff6600" style="--c:#ff6600"></button>
+          <button class="sw" data-c="#cc44ff" style="--c:#cc44ff"></button>
+          <button class="sw" data-c="#00ffcc" style="--c:#00ffcc"></button>
+          <button class="sw" data-c="#ffffff" style="--c:#ffffff"></button>
+          <button class="sw" data-c="#ff3333" style="--c:#ff3333"></button>
+          <button class="sw" data-c="#ffee00" style="--c:#ffee00"></button>
+          <button class="sw" data-c="#4488ff" style="--c:#4488ff"></button>
+        </div>
+        <label class="custom-pick">
+          <span>PICK</span>
+          <input type="color" id="custom-color" value="#00d4ff">
+        </label>
+      </div>
+
+      <div class="dock-sep"></div>
+
+      <div class="dock-section">
+        <div class="dock-label">STROKE</div>
+        <div id="stroke-row">
+          <button class="stk active" data-s="solid">—</button>
+          <button class="stk" data-s="dashed">--</button>
+          <button class="stk" data-s="dotted">··</button>
+          <button class="stk" data-s="glow">✦</button>
+        </div>
+        <select id="blend-sel">
+          <option value="source-over">Normal</option>
+          <option value="screen">Screen</option>
+          <option value="overlay">Overlay</option>
+          <option value="color-dodge">Dodge</option>
+          <option value="lighten">Lighten</option>
+          <option value="hard-light">Hard Light</option>
+          <option value="multiply">Multiply</option>
+        </select>
+      </div>
+
+      <div class="dock-sep"></div>
+
+      <div class="dock-section dock-btns">
+        <button class="dock-btn" id="btn-addtext">+ Text</button>
+        <button class="dock-btn" id="btn-togglefeed">📷</button>
+        <button class="dock-btn active-guide" id="btn-guide">? Guide</button>
+      </div>
+    </div>
+
+    <!-- Bottom bar -->
+    <div id="bottombar">
+      <span id="coords">x:0 y:0</span>
+      <div id="fps-block"><span id="fps-num">—</span><span class="fps-u">fps</span></div>
+      <div id="res-block"><span id="res-val">—</span><span class="fps-u">px</span></div>
+      <span id="tip">Show ☝️ to draw</span>
+    </div>
+
+  </div><!-- /hud -->
+
+  <!-- ══ WELCOME / CONTROLS MODAL ════════════════════ -->
+  <div id="welcome-modal" class="w-modal">
+    <div class="w-box">
+      <div class="w-header">
+        <div class="w-logo">✦ AIRSKETCH</div>
+        <div class="w-sub">GESTURE DRAWING STUDIO</div>
+      </div>
+
+      <div class="w-tabs">
+        <button class="w-tab active" data-tab="gestures">✋ Gestures</button>
+        <button class="w-tab" data-tab="mouse">🖱 Mouse / Touch</button>
+        <button class="w-tab" data-tab="keys">⌨ Shortcuts</button>
+      </div>
+
+      <div class="w-content">
+        <!-- GESTURES TAB -->
+        <div class="w-pane active" id="tab-gestures">
+          <div class="ctrl-grid">
+            <div class="ctrl-row">
+              <div class="ctrl-icon">☝️</div>
+              <div class="ctrl-info">
+                <b>Draw</b>
+                <small>Index finger only — tip traces on canvas</small>
+              </div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon">✌️</div>
+              <div class="ctrl-info">
+                <b>Erase</b>
+                <small>Peace sign — two fingers spread apart</small>
+              </div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon">🤏</div>
+              <div class="ctrl-info">
+                <b>Lift Pen</b>
+                <small>Pinch — thumb + index together, pauses drawing</small>
+              </div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon">✊</div>
+              <div class="ctrl-info">
+                <b>Pause / Freeze</b>
+                <small>Fist — freezes all input temporarily</small>
+              </div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon">🖐️</div>
+              <div class="ctrl-info">
+                <b>Move Text</b>
+                <small>Open palm — hover over text label and spread fingers</small>
+              </div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon">👍</div>
+              <div class="ctrl-info">
+                <b>Cycle Color</b>
+                <small>Thumb up — advances to the next preset color</small>
+              </div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon">🤞</div>
+              <div class="ctrl-info">
+                <b>Undo</b>
+                <small>Crossed fingers — hold ~0.4s to trigger undo</small>
+              </div>
+            </div>
+          </div>
+          <div class="w-note">📷 Camera access required — position your hand 30–60cm from the lens</div>
+        </div>
+
+        <!-- MOUSE TAB -->
+        <div class="w-pane" id="tab-mouse">
+          <div class="ctrl-grid">
+            <div class="ctrl-row">
+              <div class="ctrl-icon">🖱</div>
+              <div class="ctrl-info">
+                <b>Draw</b>
+                <small>Select DRAW tool, then click-and-drag on canvas</small>
+              </div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon">◎</div>
+              <div class="ctrl-info">
+                <b>Erase</b>
+                <small>Select ERASE tool, then click-and-drag to erase</small>
+              </div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon">✥</div>
+              <div class="ctrl-info">
+                <b>Move Text</b>
+                <small>Select MOVE tool, then click-drag any text label</small>
+              </div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon">👆</div>
+              <div class="ctrl-info">
+                <b>Touch Support</b>
+                <small>Single-finger touch draws on mobile/tablet devices</small>
+              </div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon">🎨</div>
+              <div class="ctrl-info">
+                <b>Colors &amp; Style</b>
+                <small>Right dock: swatches, custom picker, stroke styles</small>
+              </div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon">🎚</div>
+              <div class="ctrl-info">
+                <b>Size / Glow / Opacity</b>
+                <small>Left strip: vertical sliders control brush properties</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- KEYS TAB -->
+        <div class="w-pane" id="tab-keys">
+          <div class="ctrl-grid">
+            <div class="ctrl-row">
+              <div class="ctrl-icon kb">Ctrl Z</div>
+              <div class="ctrl-info"><b>Undo</b><small>Step back one action</small></div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon kb">Ctrl Y</div>
+              <div class="ctrl-info"><b>Redo</b><small>Step forward one action</small></div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon kb">Ctrl S</div>
+              <div class="ctrl-info"><b>Save</b><small>Export canvas as PNG</small></div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon kb">D</div>
+              <div class="ctrl-info"><b>Draw Mode</b><small>Switch to draw tool</small></div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon kb">E</div>
+              <div class="ctrl-info"><b>Erase Mode</b><small>Switch to eraser tool</small></div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon kb">T</div>
+              <div class="ctrl-info"><b>Add Text</b><small>Open the text placement dialog</small></div>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-icon kb">Esc</div>
+              <div class="ctrl-info"><b>Close Dialog</b><small>Dismiss any open modal</small></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="w-footer">
+        <label class="w-noshow">
+          <input type="checkbox" id="chk-noshow"> Don't show on startup
+        </label>
+        <button class="w-start" id="btn-welcome-close">✦ Let's Draw!</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Text modal -->
+  <div id="text-modal" class="modal hidden">
+    <div class="modal-box">
+      <div class="mhdr">✦ ADD TEXT</div>
+      <input id="ti-content" class="m-input" type="text" placeholder="Type anything…" autocomplete="off">
+      <div class="m-fields">
+        <div class="mf"><label>Font</label>
+          <select id="ti-font">
+            <option>Chakra Petch</option>
+            <option>JetBrains Mono</option>
+            <option>Impact</option>
+            <option>Georgia</option>
+          </select>
+        </div>
+        <div class="mf"><label>Size — <span id="ti-size-lbl">64px</span></label>
+          <input type="range" id="ti-size" min="16" max="200" value="64">
+        </div>
+        <div class="mf"><label>Color</label>
+          <input type="color" id="ti-color" value="#00d4ff">
+        </div>
+      </div>
+      <div class="m-ftr">
+        <button class="m-cancel" id="ti-cancel">Cancel</button>
+        <button class="m-ok" id="ti-ok">✦ Place</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading overlay -->
+  <div id="loader">
+    <div id="loader-inner">
+      <div class="ldr-logo">✦ AIRSKETCH</div>
+      <div class="ldr-sub">GESTURE DRAWING STUDIO</div>
+      <div id="ldr-track">
+        <div id="ldr-fill"></div>
+      </div>
+      <div id="ldr-msg">Loading…</div>
+      <div id="ldr-hint">Allow camera access when prompted</div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toasts"></div>
+
+  <!-- MediaPipe CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <!-- App scripts — NO js/ prefix, all in same folder -->
+  <script src="handTracker.js"></script>
+  <script src="gestureRecognizer.js"></script>
+  <script src="canvasManager.js"></script>
+  <script src="textManager.js"></script>
+  <script src="uiManager.js"></script>
+  <script src="app.js"></script>
+</body>
+
+</html>
